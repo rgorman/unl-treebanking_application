@@ -1,4 +1,4 @@
-import { colorForTag, parseMorphTag, ensureDocumentSnapshot, composeUserPostag, ensureFormsArray, applyMorphMappings} from './morphHelpers.js';
+import { colorForTag, parseMorphTag, ensureDocumentSnapshot, composeUserPostag, ensureFormsArray, applyMorphMappings } from './morphHelpers.js';
 import { renderCreateEditorBelow } from './morphEditor.js';
 import { colorForPOS } from '../tree/treeUtils.js';
 import { triggerAutoSave } from '../xml/saveXML.js';
@@ -6,7 +6,7 @@ import { fetchMorphology } from './morpheus.js';
 import { showConfirmDialog } from '../ui/modal.js';
 import { isMorpheusSupported, getLanguage, normalizeLang } from '../input/language.js';
 import { initMorphLexicon, incrementUsage, pickTopLexiconForm, mergeFormsIntoWord, mergeIntoAllTokens, deleteLexiconForm } from './morphLexicon.js';
-import { getActiveTagset, getPosList , getMorphAttribute, getPosValues } from '../tags/tagsetStore.js';
+import { getActiveTagset, getPosList, getMorphAttribute, getPosValues } from '../tags/tagsetStore.js';
 
 
 const UI_TO_CFG_KEY = {
@@ -163,7 +163,7 @@ export function setupMorphTool() {
   const toolBody = document.getElementById('tool-body');
   const allToolButtons = document.querySelectorAll('#toolbar button');
   if (!morphBtn || !toolBody) return;
-    
+
   // make tool-body the positioning parent for the gear dropdown
   toolBody.style.position = "relative";
 
@@ -191,7 +191,7 @@ export function setupMorphTool() {
       toolBody.innerHTML = window.treebankModeHTML;
     } else {
       toolBody.innerHTML =
-                `<p>Treebanking mode: click a word or node to edit dependencies.</p>`;
+        `<p>Treebanking mode: click a word or node to edit dependencies.</p>`;
     }
   };
 
@@ -233,7 +233,7 @@ export function setupMorphTool() {
           <div id="morph-hover" class="morph-slot"></div>
         </div>
       `;
-      
+
       // --- mount gear + dropdown as children of toolBody (top-right of the tool box) ---
       toolBody.insertAdjacentHTML("beforeend", `
         <button id="morph-settings-btn" type="button" class="morph-gear-btn" aria-label="Settings">
@@ -290,7 +290,7 @@ export function setupMorphTool() {
         const hasBatch = window.batchSelection && window.batchSelection.size > 0;
 
         if (hasBatch && currentSentence?.words) {
-          const ids = Array.from(window.batchSelection).map(String).sort((a,b) => Number(a) - Number(b));
+          const ids = Array.from(window.batchSelection).map(String).sort((a, b) => Number(a) - Number(b));
           const words = ids
             .map(id => currentSentence.words.find(w => String(w.id) === id))
             .filter(Boolean);
@@ -345,13 +345,13 @@ export function setupMorphTool() {
  */
 function handleAlternateMorphConfig(toolBody) {
   const alternateCb = toolBody.querySelector("#alternate-morph-checkbox")
-  
-  alternateCb.addEventListener("click", ()=> {
+
+  alternateCb.addEventListener("click", () => {
     const morphConfig = document.querySelector(".morph-config");
     morphConfig.classList.toggle("block");
     const settingsBox = toolBody.querySelector('#morph-settings');
     settingsBox.style.display = "none";
-  }) 
+  })
   const inputField = document.getElementById('morph-service-url');
 
   // Load saved value on init
@@ -375,26 +375,31 @@ function handleAlternateMorphConfig(toolBody) {
     localStorage.removeItem('customMorphService');
     window.customMorphServiceAddress = null;
     inputField.value = "";
-});
+  });
 }
 export function applyActiveSelectionToWord(word) {
   const af = Number(word.activeForm);
-  word.activeForm = Number.isFinite(af) ? af : -1;  
+  word.activeForm = Number.isFinite(af) ? af : -1;
   ensureDocumentSnapshot(word);
 
   if (word.activeForm === -1) {
     // show the original XML values
-    word._displayLemma  = word._doc.lemma;
+    word._displayLemma = word._doc.lemma;
     word._displayPostag = word._doc.postag;
+    word.lemma = word._doc.lemma;
+    word.postag = word._doc.postag;
     word.source = 'document';
   } else {
     const f = word.forms?.[word.activeForm];
     if (f) {
-      word._displayLemma  = (f.lemma  || word._doc.lemma);
+      word._displayLemma = (f.lemma || word._doc.lemma);
       word._displayPostag = (f.postag || word._doc.postag);
+      word.lemma = word._displayLemma;
+      word.postag = word._displayPostag;
       word.source = normalizeSource(f.source);
     }
   }
+
   const tok = document.querySelector(`.token[data-word-id="${word.id}"]`);
   if (tok) {
     const postag = word._displayPostag ?? word.postag ?? "";
@@ -422,7 +427,7 @@ export async function renderUserFormsList(word, toolBody) {
   try {
     await initMorphLexicon();
     await mergeFormsIntoWord({ lang, word });
-  } catch (e) {}
+  } catch (e) { }
 
   // Try to pull the single best lexicon form for this surface (helps preselect)
   try {
@@ -443,16 +448,30 @@ export async function renderUserFormsList(word, toolBody) {
         match.source = normalizeSource(match.source);
       }
     }
-  } catch (e) {}
+  } catch (e) { }
   const af = Number(word.activeForm);
   word.activeForm = Number.isFinite(af) ? af : -1;
 
   // If preselect enabled and nothing selected yet, choose most-used
-  if (window.morphPreselectEnabled && word.activeForm < 0 && word.forms.length > 0) {
+
+  const currentPostag = (word.postag || word._displayPostag || word._doc?.postag || '').trim();
+  const currentLemma = (word.lemma || word._displayLemma || word._doc?.lemma || '').trim();
+  const hasExistingAnnotation = Boolean(currentPostag || currentLemma);
+
+  if (hasExistingAnnotation && word.forms?.length > 0 && word.activeForm < 0) {
+    const matchIdx = word.forms.findIndex(f =>
+      (f.postag || '').trim() === currentPostag &&
+      (!currentLemma || (f.lemma || '').trim() === currentLemma)
+    );
+    if (matchIdx >= 0) word.activeForm = matchIdx;
+  }
+
+  if (window.morphPreselectEnabled && !hasExistingAnnotation && word.activeForm < 0 && word.forms.length > 0) {
     const bestIdx = _mostUsedFormIndex(word.forms);
     word.activeForm = bestIdx >= 0 ? bestIdx : 0;
     applyActiveSelectionToWord(word);
   }
+
 
   let list = toolBody.querySelector('.user-forms-list');
   if (!list) {
@@ -552,11 +571,11 @@ export async function renderUserFormsList(word, toolBody) {
       );
       if (!confirmDelete) return;
 
-      await removeForm(word, idx, { lang, toolBody});
+      await removeForm(word, idx, { lang, toolBody });
     });
   });
 
-    list.querySelectorAll('.clone-form').forEach(btn => {
+  list.querySelectorAll('.clone-form').forEach(btn => {
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
 
@@ -604,12 +623,12 @@ export async function preselectMissingMorphForCurrentSentence(toolBody = null, o
       // Ensure doc snapshot exists so we can detect "already has morph"
       ensureDocumentSnapshot(word);
 
-      const docLemma  = (word._doc?.lemma  ?? word.lemma  ?? '').trim();
-      const docPostag = (word._doc?.postag ?? word.postag ?? '').trim();
+      const currentPostag = (word.postag || word._displayPostag || word._doc?.postag || '').trim();
+      const currentLemma = (word.lemma || word._displayLemma || word._doc?.lemma || '').trim();
 
       const alreadyHasMorph =
         (typeof word.activeForm === 'number' && word.activeForm >= 0) ||
-        (docLemma !== '' || docPostag !== '');
+        (currentLemma !== '' || currentPostag !== '');
 
       if (alreadyHasMorph) continue;
 
@@ -619,7 +638,7 @@ export async function preselectMissingMorphForCurrentSentence(toolBody = null, o
       try {
         await initMorphLexicon();
         await mergeFormsIntoWord({ lang, word });
-      } catch (e) {}
+      } catch (e) { }
 
       // 1) Try lexicon first (most-used persistent form)
       try {
@@ -669,22 +688,22 @@ export async function preselectMissingMorphForCurrentSentence(toolBody = null, o
       changed++;
     }
 
-  if (changed > 0) {
-    // One refresh at the end (instead of rebuilding per word)
-    if (typeof window.createNodeHierarchy === "function") {
-      window.createNodeHierarchy(window.currentIndex);
+    if (changed > 0) {
+      // One refresh at the end (instead of rebuilding per word)
+      if (typeof window.createNodeHierarchy === "function") {
+        window.createNodeHierarchy(window.currentIndex);
+      }
+      if (typeof window.fastRefreshTree === "function") {
+        window.fastRefreshTree();
+      }
+      if (typeof window.updateXMLIfActive === "function") {
+        window.updateXMLIfActive();
+      }
+      triggerAutoSave();
+      console.log(`[Preselect] Applied best morph to ${changed} word(s).`);
     }
-    if (typeof window.fastRefreshTree === "function") {
-      window.fastRefreshTree();
-    }
-    if (typeof window.updateXMLIfActive === "function") {
-      window.updateXMLIfActive();
-    }
-    triggerAutoSave();
-    console.log(`[Preselect] Applied best morph to ${changed} word(s).`);
   }
-  }
-  catch(err){
+  catch (err) {
     const inputField = document.getElementById('morph-service-url');
     console.error("Batch halted:", err);
     alert("Morphology service is unreachable. Reverting to default.");
@@ -692,7 +711,7 @@ export async function preselectMissingMorphForCurrentSentence(toolBody = null, o
     window.customMorphServiceAddress = null;
     inputField.value = "";
   }
-  
+
 }
 
 // =====================================================
@@ -779,7 +798,7 @@ function enableMorphEntryExpansion(scopeEl) {
     divider.className = 'morph-divider';
     entry.appendChild(divider);
 
-        const DEFAULT_ORDER = ['pos','person','number','tense','mood','voice','gender','case','degree'];
+    const DEFAULT_ORDER = ['pos', 'person', 'number', 'tense', 'mood', 'voice', 'gender', 'case', 'degree'];
 
     const display = {};
 
@@ -925,20 +944,20 @@ function userFormCardHTML(word, form, index, isActive, isExpanded = false) {
   const cfg = getActiveTagset();
 
   const VALUE_MAPS = {
-    number: { s:'singular', p:'plural', d:'dual' },
-    gender: { m:'masculine', f:'feminine', n:'neuter', c:'common' },
-    case:   { n:'nominative', g:'genitive', d:'dative', a:'accusative', v:'vocative', b:'ablative', l:'locative' },
-    tense:  { p:'present', i:'imperfect', r:'perfect', l:'pluperfect', f:'future', a:'aorist', t:'futperfect' },
-    mood:   { i:'indicative', s:'subjunctive', o:'optative', n:'infinitive', m:'imperative', p:'participle', d:'gerund', g:'gerundive', u:'supine' },
-    voice:  { a:'active', e:'medio-passive', p:'passive', d:'deponens' },
-    degree: { p:'positive', c:'comparative', s:'superlative' },
-    person: { '1':'first', '2':'second', '3':'third' }
+    number: { s: 'singular', p: 'plural', d: 'dual' },
+    gender: { m: 'masculine', f: 'feminine', n: 'neuter', c: 'common' },
+    case: { n: 'nominative', g: 'genitive', d: 'dative', a: 'accusative', v: 'vocative', b: 'ablative', l: 'locative' },
+    tense: { p: 'present', i: 'imperfect', r: 'perfect', l: 'pluperfect', f: 'future', a: 'aorist', t: 'futperfect' },
+    mood: { i: 'indicative', s: 'subjunctive', o: 'optative', n: 'infinitive', m: 'imperative', p: 'participle', d: 'gerund', g: 'gerundive', u: 'supine' },
+    voice: { a: 'active', e: 'medio-passive', p: 'passive', d: 'deponens' },
+    degree: { p: 'positive', c: 'comparative', s: 'superlative' },
+    person: { '1': 'first', '2': 'second', '3': 'third' }
   };
 
   const posLabels = {
-    v:'verb', n:'noun', a:'adjective', d:'adverb', p:'pronoun',
-    c:'conjunction', r:'adposition', l:'article', m:'numeral',
-    i:'interjection', u:'punctuation', e:'exclamation', x:'irregular'
+    v: 'verb', n: 'noun', a: 'adjective', d: 'adverb', p: 'pronoun',
+    c: 'conjunction', r: 'adposition', l: 'article', m: 'numeral',
+    i: 'interjection', u: 'punctuation', e: 'exclamation', x: 'irregular'
   };
 
   const KEY_ALIASES = {
@@ -990,7 +1009,7 @@ function userFormCardHTML(word, form, index, isActive, isExpanded = false) {
   const col = colorForTag(form.postag || '');
   const inputName = `morph-form-${word.id}`;
   const expandedClass = isExpanded ? ' expanded' : '';
-  const expandedAttr  = isExpanded ? 'true' : 'false';
+  const expandedAttr = isExpanded ? 'true' : 'false';
   const cbId = `uf-check-${index}`;
   const src = normalizeSource(form.source);
 
@@ -1070,8 +1089,8 @@ async function removeForm(word, index, opts = {}) {
   if (!removed) return;
 
   const surface = (word.form || '').toString();
-  const lemma   = (removed.lemma || '').trim();
-  const postag  = (removed.postag || '').trim();
+  const lemma = (removed.lemma || '').trim();
+  const postag = (removed.postag || '').trim();
 
   // -------- 1) Delete from IndexedDB (so it never returns) --------
   if (shouldDeleteFromLexicon) {
@@ -1162,7 +1181,7 @@ async function renderMorphInfo(wordOrWords, opts = {}) {
 
   const slot = (opts && opts.slot === "hover") ? "hover" : "pinned";
   const pinnedEl = document.getElementById("morph-pinned");
-  const hoverEl  = document.getElementById("morph-hover");
+  const hoverEl = document.getElementById("morph-hover");
   const promptEl = document.getElementById("morph-prompt");
 
   const root = (slot === "hover") ? hoverEl : pinnedEl;
@@ -1174,7 +1193,7 @@ async function renderMorphInfo(wordOrWords, opts = {}) {
   if (words.length === 0) return;
 
   // Keep stable order
-  words.sort((a,b) => Number(a.id) - Number(b.id));
+  words.sort((a, b) => Number(a.id) - Number(b.id));
 
   const renderOne = async (word, mountEl) => {
     ensureDocumentSnapshot(word);
@@ -1182,10 +1201,10 @@ async function renderMorphInfo(wordOrWords, opts = {}) {
     const af = Number(word.activeForm);
     word.activeForm = Number.isFinite(af) ? af : -1;
 
-    const lemma  = word._doc?.lemma ?? '';
+    const lemma = word._doc?.lemma ?? '';
     const postag = word._doc?.postag ?? '';
 
-    const docLemma  = String(lemma).trim();
+    const docLemma = String(lemma).trim();
     const docPostag = String(postag).trim();
     const hasDocMorph = (docLemma !== '' || docPostag !== '');
 
@@ -1274,16 +1293,16 @@ function posCharFromMorpheusPOS(posRaw) {
   // Typical Morpheus POS strings:
   // "verb", "noun", "adjective", "pronoun", "article",
   // "adverb", "conjunction", "preposition", "interjection", etc.
-  if (s.startsWith('verb'))         return 'v';
-  if (s.startsWith('noun'))         return 'n';
-  if (s.startsWith('adj'))          return 'a';
-  if (s.includes('participle'))     return 'v'; // treat as verb-like
-  if (s.startsWith('pron'))         return 'p';
-  if (s.startsWith('art'))          return 'l'; // article
-  if (s.startsWith('adv'))          return 'd';
+  if (s.startsWith('verb')) return 'v';
+  if (s.startsWith('noun')) return 'n';
+  if (s.startsWith('adj')) return 'a';
+  if (s.includes('participle')) return 'v'; // treat as verb-like
+  if (s.startsWith('pron')) return 'p';
+  if (s.startsWith('art')) return 'l'; // article
+  if (s.startsWith('adv')) return 'd';
   if (s.startsWith('part') || s.includes('particle')) return 'd'; // treat particles like adverbs (Arethusa-style)
   if (s.includes('indeclin')) return 'd'; // indeclinable often behaves like particle/adverb for coloring
-  if (s.startsWith('conj'))         return 'c';
+  if (s.startsWith('conj')) return 'c';
   if (
     s.startsWith('prep') ||
     s.includes('preposition') ||
@@ -1292,10 +1311,10 @@ function posCharFromMorpheusPOS(posRaw) {
     s.includes('adposition')
   ) return 'r'; // adposition
   if (s.startsWith('num') ||
-      s.startsWith('card'))         return 'm'; // numeral
+    s.startsWith('card')) return 'm'; // numeral
   if (s.startsWith('excl') || s.startsWith('exclam')) return isLatin ? 'e' : 'i';
-  if (s.startsWith('interj'))       return 'i';
-  if (s.startsWith('punct'))        return 'u';
+  if (s.startsWith('interj')) return 'i';
+  if (s.startsWith('punct')) return 'u';
 
   return '';
 }
@@ -1317,9 +1336,9 @@ function guessPosCharFromMorph(result) {
 function codeFromPerson(p) {
   const s = (p || '').toString().toLowerCase().trim();
   if (!s) return '';
-  if (s === '1' || s === '1st' || s.startsWith('first'))  return '1';
+  if (s === '1' || s === '1st' || s.startsWith('first')) return '1';
   if (s === '2' || s === '2nd' || s.startsWith('second')) return '2';
-  if (s === '3' || s === '3rd' || s.startsWith('third'))  return '3';
+  if (s === '3' || s === '3rd' || s.startsWith('third')) return '3';
   return '';
 }
 
@@ -1480,11 +1499,11 @@ function formFromMorphResult(result, word) {
 
   const rawPerson = firstDefined(result, ['person', 'pers']);
   const rawNumber = firstDefined(result, ['num', 'number']);
-  const rawTense  = firstDefined(result, ['tense']);
-  const rawMood   = firstDefined(result, ['mood']);
-  const rawVoice  = firstDefined(result, ['voice']);
+  const rawTense = firstDefined(result, ['tense']);
+  const rawMood = firstDefined(result, ['mood']);
+  const rawVoice = firstDefined(result, ['voice']);
   const rawGender = firstDefined(result, ['gender', 'gend']);
-  const rawCase   = firstDefined(result, ['case']);
+  const rawCase = firstDefined(result, ['case']);
   const rawPosKey = (result.pos ?? '').toString().trim();
   const posList = getPosList();
   const posKey =
@@ -1498,11 +1517,11 @@ function formFromMorphResult(result, word) {
   const fields = {
     person: codeFromPerson(rawPerson),
     number: codeFromNumber(rawNumber),
-    tense:  codeFromTense(rawTense),
-    mood:   codeFromMood(rawMood),
-    voice:  codeFromVoice(rawVoice),
+    tense: codeFromTense(rawTense),
+    mood: codeFromMood(rawMood),
+    voice: codeFromVoice(rawVoice),
     gender: codeFromGender(rawGender),
-    case:   codeFromCase(rawCase),
+    case: codeFromCase(rawCase),
     degree: ''
   };
 
@@ -1561,7 +1580,7 @@ async function attachMorpheusSuggestions(word, toolBody) {
   }
 
   const surfaceRaw = (word.form && String(word.form).trim()) || '';
-  const lemmaRaw   = (word.lemma && String(word.lemma).trim()) || '';
+  const lemmaRaw = (word.lemma && String(word.lemma).trim()) || '';
   const cleanedSurface = surfaceRaw.replace(/[·.,;:!?()[\]{}"“”'’]/g, '').trim();
 
   let results = [];
@@ -1588,7 +1607,7 @@ async function attachMorpheusSuggestions(word, toolBody) {
         console.groupCollapsed(`[morph-map] ${word.form} (surface) retriever=BspMorphRetriever`);
         console.log('LEFT (raw)[0]:', raw[0]);
         console.log('RIGHT (mapped)[0]:', results[0]);
-        ['pos','tense','voice','mood','case','gender','num','person','pofs','comp'].forEach(k => {
+        ['pos', 'tense', 'voice', 'mood', 'case', 'gender', 'num', 'person', 'pofs', 'comp'].forEach(k => {
           const a = raw[0]?.[k], b = results[0]?.[k];
           if (a !== b) console.log(`${k}:`, a, '->', b);
         });
@@ -1616,7 +1635,7 @@ async function attachMorpheusSuggestions(word, toolBody) {
         console.groupCollapsed(`[morph-map] ${word.form} (cleaned) retriever=BspMorphRetriever`);
         console.log('LEFT (raw)[0]:', raw[0]);
         console.log('RIGHT (mapped)[0]:', results[0]);
-        ['pos','tense','voice','mood','case','gender','num','person','pofs','comp'].forEach(k => {
+        ['pos', 'tense', 'voice', 'mood', 'case', 'gender', 'num', 'person', 'pofs', 'comp'].forEach(k => {
           const a = raw[0]?.[k], b = results[0]?.[k];
           if (a !== b) console.log(`${k}:`, a, '->', b);
         });
@@ -1644,7 +1663,7 @@ async function attachMorpheusSuggestions(word, toolBody) {
         console.groupCollapsed(`[morph-map] ${word.form} (lemma) retriever=BspMorphRetriever`);
         console.log('LEFT (raw)[0]:', raw[0]);
         console.log('RIGHT (mapped)[0]:', results[0]);
-        ['pos','tense','voice','mood','case','gender','num','person','pofs','comp'].forEach(k => {
+        ['pos', 'tense', 'voice', 'mood', 'case', 'gender', 'num', 'person', 'pofs', 'comp'].forEach(k => {
           const a = raw[0]?.[k], b = results[0]?.[k];
           if (a !== b) console.log(`${k}:`, a, '->', b);
         });
@@ -1672,7 +1691,7 @@ async function attachMorpheusSuggestions(word, toolBody) {
     word.forms.map(f => `${(f.lemma || '').trim()}::${f.postag || ''}`)
   );
 
-  const baseLemma  = (word._doc?.lemma  || word.lemma  || '').trim();
+  const baseLemma = (word._doc?.lemma || word.lemma || '').trim();
   const basePostag = (word._doc?.postag || word.postag || '').trim();
   if (baseLemma || basePostag) existing.add(`${baseLemma}::${basePostag}`);
 
@@ -1692,7 +1711,19 @@ async function attachMorpheusSuggestions(word, toolBody) {
   const af2 = Number(word.activeForm);
   word.activeForm = Number.isFinite(af2) ? af2 : -1;
 
-  if (window.morphPreselectEnabled && word.activeForm < 0 && word.forms.length > 0) {
+  const currentPostag = (word.postag || word._displayPostag || word._doc?.postag || '').trim();
+  const currentLemma = (word.lemma || word._displayLemma || word._doc?.lemma || '').trim();
+  const hasExistingAnnotation = Boolean(currentPostag || currentLemma);
+
+  if (hasExistingAnnotation && word.forms?.length > 0 && word.activeForm < 0) {
+    const matchIdx = word.forms.findIndex(f =>
+      (f.postag || '').trim() === currentPostag &&
+      (!currentLemma || (f.lemma || '').trim() === currentLemma)
+    );
+    if (matchIdx >= 0) word.activeForm = matchIdx;
+  }
+
+  if (window.morphPreselectEnabled && !hasExistingAnnotation && word.activeForm < 0 && word.forms.length > 0) {
     const bestIdx = _mostUsedFormIndex(word.forms);
     word.activeForm = bestIdx >= 0 ? bestIdx : 0;
     applyActiveSelectionToWord(word);
@@ -1703,7 +1734,7 @@ async function attachMorpheusSuggestions(word, toolBody) {
   }
 
   word._morpheusLoading = false;
-} 
+}
 
 function wireMorphSettingsUI(toolBody) {
   const settingsBtn = toolBody.querySelector('#morph-settings-btn');
@@ -1766,7 +1797,7 @@ function wireMorphSettingsUI(toolBody) {
         await window.maybeRunMorphPreselect();
       }
 
-      try { triggerAutoSave(); } catch {}
+      try { triggerAutoSave(); } catch { }
     }
   });
 }
