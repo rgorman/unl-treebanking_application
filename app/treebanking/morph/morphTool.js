@@ -466,11 +466,11 @@ export async function renderUserFormsList(word, toolBody) {
     if (matchIdx >= 0) word.activeForm = matchIdx;
   }
 
-  if (window.morphPreselectEnabled && !hasExistingAnnotation && word.activeForm < 0 && word.forms.length > 0) {
-    const bestIdx = _mostUsedFormIndex(word.forms);
-    word.activeForm = bestIdx >= 0 ? bestIdx : 0;
-    applyActiveSelectionToWord(word);
-  }
+  // if (window.morphPreselectEnabled && !hasExistingAnnotation && word.activeForm < 0 && word.forms.length > 0) {
+  //   const bestIdx = _mostUsedFormIndex(word.forms);
+  //   word.activeForm = bestIdx >= 0 ? bestIdx : 0;
+  //   applyActiveSelectionToWord(word);
+  // }
 
 
   let list = toolBody.querySelector('.user-forms-list');
@@ -1180,6 +1180,8 @@ async function renderMorphInfo(wordOrWords, opts = {}) {
   if (!window.isMorphActive) return;
 
   const slot = (opts && opts.slot === "hover") ? "hover" : "pinned";
+  if (slot === "hover") return;
+
   const pinnedEl = document.getElementById("morph-pinned");
   const hoverEl = document.getElementById("morph-hover");
   const promptEl = document.getElementById("morph-prompt");
@@ -1723,11 +1725,11 @@ async function attachMorpheusSuggestions(word, toolBody) {
     if (matchIdx >= 0) word.activeForm = matchIdx;
   }
 
-  if (window.morphPreselectEnabled && !hasExistingAnnotation && word.activeForm < 0 && word.forms.length > 0) {
-    const bestIdx = _mostUsedFormIndex(word.forms);
-    word.activeForm = bestIdx >= 0 ? bestIdx : 0;
-    applyActiveSelectionToWord(word);
-  }
+  // if (window.morphPreselectEnabled && !hasExistingAnnotation && word.activeForm < 0 && word.forms.length > 0) {
+  //   const bestIdx = _mostUsedFormIndex(word.forms);
+  //   word.activeForm = bestIdx >= 0 ? bestIdx : 0;
+  //   applyActiveSelectionToWord(word);
+  // }
 
   if (toolBody) {
     await appendCreateAndUserForms(word, toolBody);
